@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Live login log</title>
+    <style>
+        :root {
+            color-scheme: light;
+            font-family: system-ui, sans-serif;
+            background: #f3f5f8;
+            color: #172033;
+        }
+
+        body {
+            box-sizing: border-box;
+            max-width: 680px;
+            margin: 48px auto;
+            padding: 24px;
+        }
+
+        main {
+            padding: 28px;
+            border-radius: 14px;
+            background: white;
+            box-shadow: 0 8px 28px #17203314;
+        }
+
+        label, input, button {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        label {
+            margin-top: 16px;
+            font-weight: 600;
+        }
+
+        input, button {
+            margin-top: 6px;
+            padding: 11px 12px;
+            border: 1px solid #cbd2df;
+            border-radius: 8px;
+            font: inherit;
+        }
+
+        button {
+            margin-top: 20px;
+            border: 0;
+            background: #2457d6;
+            color: white;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        #status {
+            min-height: 1.5em;
+            color: #a12a2a;
+        }
+
+        #live-view[hidden] {
+            display: none;
+        }
+
+        #logs {
+            padding-left: 20px;
+        }
+
+        #logs li {
+            margin: 10px 0;
+        }
+
+        .hint {
+            color: #586174;
+            font-size: .92rem;
+        }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Đăng nhập</h1>
+    <p class="hint">Tài khoản demo: admin / admin123 hoặc binh / binh123</p>
+    <form id="login-form">
+        <label for="username">Tên đăng nhập</label>
+        <input id="username" name="username" autocomplete="username" required>
+        <label for="password">Mật khẩu</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button type="submit">Đăng nhập</button>
+    </form>
+    <p id="status" role="status" aria-live="polite"></p>
+    <section id="live-view" hidden>
+        <h2 id="welcome"></h2>
+        <p id="connection-status" class="hint">Đang kết nối...</p>
+        <h3>Log trực tiếp</h3>
+        <ul id="logs" aria-live="polite"></ul>
+    </section>
+</main>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+    const loginForm = document.querySelector("#login-form");
+    const statusText = document.querySelector("#status");
+    const liveView = document.querySelector("#live-view");
+    const logs = document.querySelector("#logs");
+    let socket;
+
+    loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        statusText.textContent = "";
+
+        try {
+            const response = await fetch("/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    username: document.querySelector("#username").value,
+                    password: document.querySelector("#password").value
+                })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.error || "Đăng nhập thất bại");
+            }
+
+            loginForm.hidden = true;
+            liveView.hidden = false;
+            document.querySelector("#welcome").textContent =
+                `Xin chào ${result.username} (${result.role})`;
+
+            if (socket) {
+                socket.disconnect();
+            }
+            const socketPort = new URLSearchParams(window.location.search).get("socketPort") || "9092";
+            socket = io(`http://${window.location.hostname}:${socketPort}`, {
+                query: { token: result.token }
+            });
+            socket.on("connect", () => {
+                document.querySelector("#connection-status").textContent =
+                    "Đang nhận log trực tiếp";
+            });
+            socket.on("connect_error", (error) => {
+                document.querySelector("#connection-status").textContent =
+                    `Kết nối bị từ chối hoặc thất bại: ${error.message}`;
+            });
+            socket.on("log", (entry) => {
+                const item = document.createElement("li");
+                item.textContent = `${entry.message} — ${entry.time}`;
+                logs.prepend(item);
+            });
+        } catch (error) {
+            statusText.textContent = error.message;
+        }
+    });
+</script>
+</body>
+</html>
